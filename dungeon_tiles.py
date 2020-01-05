@@ -5,6 +5,7 @@ import sys
 
 
 
+
 class MapConstructor:
 	def __init__(self):
 		pg.init()
@@ -19,7 +20,6 @@ class MapConstructor:
 		self.positions = {'h':1, 'w':self.WIDTH-self.TSIZE*self.ONELINE, 'line' : 0}
 		self.clock = pg.time.Clock()
 		self.surface = pg.display.set_mode((self.WIDTH,self.HEIGHT))
-		self.run()
 
 	def eq_pos(self, mx,my):
 		return mx//self.TSIZE*self.TSIZE, my//self.TSIZE*self.TSIZE
@@ -76,6 +76,8 @@ class MapConstructor:
 					self.offload()
 				elif event.key == pg.K_c:
 					self.tilepos = {}
+				elif event.key == pg.K_r:
+					self.hold[0] = self.rotate(self.hold[0], 90)
 
 	def scroll(self, up=True):
 		self.positions['line'] = max(0, self.positions['line']-self.ONELINE) if up else min(self.positions['line']+self.ONELINE, len(self.myimages.keys())-7*self.ONELINE)
@@ -84,18 +86,6 @@ class MapConstructor:
 		startline = self.WIDTH-(self.TSIZE*self.ONELINE)
 		self.surface.fill((0,0,0))
 
-		h = self.positions['h']*self.TSIZE
-		w = self.positions['w']
-		for x in range(self.positions['line'], len(self.myimages.keys())):
-			self.surface.blit(self.myimages[x], (w,h))
-
-			self.poslist[w//self.TSIZE,h//self.TSIZE] = self.myimages[x], x
-
-			if w+self.TSIZE >= self.WIDTH:
-				w = self.WIDTH-self.TSIZE*self.ONELINE
-				h += self.TSIZE
-			else: w+=self.TSIZE
-
 		for key in self.tilepos.keys():
 			self.surface.blit(self.tilepos[key][0], key)
 		mx,my = pg.mouse.get_pos()
@@ -103,6 +93,19 @@ class MapConstructor:
 		if not self.hold[0]:
 			pg.draw.rect(self.surface, (255,0,0), (mx,my, self.TSIZE, self.TSIZE), 2)
 		else: self.surface.blit(self.hold[0][0], (mx,my))
+
+		h = self.positions['h']*self.TSIZE
+		w = self.positions['w']
+		for x in range(self.positions['line'], len(self.myimages.keys())):
+			self.surface.blit(self.myimages[x], (w,h))
+
+			self.poslist[w//self.TSIZE,h//self.TSIZE] = self.myimages[x], x, 0 #img, index, angle
+
+			if w+self.TSIZE >= self.WIDTH:
+				w = self.WIDTH-self.TSIZE*self.ONELINE
+				h += self.TSIZE
+			else: w+=self.TSIZE
+
 
 		distance = self.WIDTH-(self.TSIZE*self.ONELINE)
 		pg.draw.rect(self.surface, (150,150,150), (distance,0, self.TSIZE*self.ONELINE, self.TSIZE))
@@ -120,6 +123,9 @@ class MapConstructor:
 			(self.WIDTH-self.TSIZE*2+self.TSIZE//4,self.HEIGHT-self.TSIZE//1.5)))
 		pg.display.flip()
 
+	def rotate(self):
+		hold
+
 	def upload(self, sheet = 'Shocknew1.png'):
 		size = self.TSIZE
 		my_image = Image.open(sheet)
@@ -132,24 +138,35 @@ class MapConstructor:
 			img = img.convert_alpha() if img.get_alpha() else img.convert()
 			self.myimages[x] = img
 
+	def rotate(self, data, degree = False):
+		angle =degree if data[2]+degree > 360 else data[2]+degree
+		img = self.myimages[data[1]]
+		img = Image.frombytes("RGBA", img.get_size(), pg.image.tostring(img, "RGBA", False))
+		rotated_image = img.rotate(angle, resample = Image.BICUBIC)
+		raw_str = rotated_image.tobytes('raw', 'RGBA')
+		return pg.image.fromstring(raw_str, img.size, "RGBA"), data[1], angle
+
 	def offload(self):
-		newdf = pd.DataFrame([{'tile_index':self.tilepos[key][1], 'pos':key} for key in self.tilepos.keys()])
+		newdf = pd.DataFrame([{'tile_index':self.tilepos[key][1], 'pos':key, 'angle':self.tilepos[key][2]} for key in self.tilepos.keys()])
 		tiles = pd.read_csv('tocsv2.csv')
 		total = pd.merge(newdf,tiles, left_on = 'tile_index', right_index = True, how = 'inner')
 		total = total.loc[:, ~total.columns.str.contains('^Unnamed')]
-		#print(total)
 		total.to_csv('newmap.csv')
 
 	def load(self):
 		self.upload()
 		try:
 			tiles = pd.read_csv('newmap.csv')
-			
+			print(tiles)
 			for x in range(len(tiles)):
-				txt = tiles.iloc[x,1].replace('(','').replace(')','').split(',')
+
+				txt = tiles.iloc[x,2].replace('(','').replace(')','').split(',')
 				pos = int(txt[0]), int(txt[1])
-				self.tilepos[pos] = self.myimages[tiles.iloc[x,2]], tiles.iloc[x,2]
-		except: 
+				img = self.myimages[tiles.iloc[x,3]], tiles.iloc[x,3], tiles.iloc[x,1]
+
+				self.tilepos[pos] = self.rotate(img) if tiles.iloc[x,1] != 0 else img
+		except Exception as e:
+			print(e) 
 			print('No map found, you can start drawing a new one')
 
 	def run(self):
@@ -163,4 +180,5 @@ class MapConstructor:
 if __name__ == '__main__':
 
 	construct = MapConstructor()
+	construct.run()
 
